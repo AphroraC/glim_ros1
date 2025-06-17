@@ -9,8 +9,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
-option(BUILD_WITH_CUDA "Build with GPU support" ON)
+option(BUILD_WITH_CUDA "Build with GPU support" OFF)
 option(BUILD_WITH_VIEWER "Build with visualizer" ON)
+set(GLIM_USE_OPENCV 1)
+add_definitions(-DGLIM_USE_OPENCV)
 
 find_package(catkin REQUIRED COMPONENTS cv_bridge image_transport tf2_ros roslib rosbag sensor_msgs)
 
@@ -19,6 +21,7 @@ find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED core)
 find_package(GTSAM REQUIRED)
 find_package(spdlog REQUIRED)
+find_package(PCL REQUIRED)
 
 ###################################
 ## catkin specific configuration ##
@@ -57,18 +60,20 @@ if (NOT TARGET glim::glim)
   )
 endif()
 
-
 add_library(glim_ros
   src/glim_ros/glim_ros.cpp
 )
 target_include_directories(glim_ros PUBLIC
   include
   ${catkin_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
 )
 target_link_libraries(glim_ros
   glim::glim
   ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
 )
+add_definitions(${PCL_DEFINITIONS})
 
 add_library(rviz_viewer SHARED
   src/glim_ros/rviz_viewer.cpp
@@ -99,6 +104,7 @@ if(BUILD_WITH_VIEWER)
   target_link_libraries(offline_viewer
     glim::interactive_viewer
     glim_ros
+    gtsam
   )
 endif()
 
