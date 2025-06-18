@@ -59,7 +59,7 @@ bool GlimROS::saveToPCD(const std::vector<Eigen::Vector4d>& points,
         return false;
     }
     
-    logger->info("Starting PCD file generation with {%d} points", points.size());
+    logger->info("Starting PCD file generation with {} points", points.size());
     
     try {
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
@@ -106,12 +106,12 @@ bool GlimROS::saveToPCD(const std::vector<Eigen::Vector4d>& points,
         boost::filesystem::path dir_path(save_directory);
         if (!boost::filesystem::exists(dir_path)) {
             if (!boost::filesystem::create_directories(dir_path)) {
-                logger->error("Failed to create directory: {%s}", save_directory);
+                logger->error("Failed to create directory: {}", save_directory);
                 return false;
             }
         }
         
-        logger->info("Saving {%d} valid points to: {%s}", cloud->points.size(), full_path);
+        logger->info("Saving {} valid points to: {}", cloud->points.size(), full_path);
         
         int result = pcl::io::savePCDFile(full_path, *cloud);
         
@@ -121,16 +121,16 @@ bool GlimROS::saveToPCD(const std::vector<Eigen::Vector4d>& points,
             boost::filesystem::path file_path(full_path);
             if (boost::filesystem::exists(file_path)) {
                 auto file_size = boost::filesystem::file_size(file_path);
-                logger->info("PCD file size: {%.2f} MB", static_cast<double>(file_size) / (1024.0 * 1024.0));
+                logger->info("PCD file size: {} MB", static_cast<double>(file_size) / (1024.0 * 1024.0));
             }
             
             return true;
         } else {
-            logger->error("Failed to save PCD file: {%s}, error code: {%d}", full_path, result);
+            logger->error("Failed to save PCD file: {}, error code: {}", full_path, result);
             return false;
         }
     } catch (const std::exception& e) {
-        logger->error("Exception occurred while saving PCD file: {%s}", e.what());
+        logger->error("Exception occurred while saving PCD file: {}", e.what());
         return false;
     } catch (...) {
         logger->error("Unknown exception occurred while saving PCD file");
@@ -152,17 +152,17 @@ GlimROS::~GlimROS() {
                     save_directory = "/tmp/glim_global_map";
                 }
                 
-                logger->info("Saving global map to: {%s}", save_directory);
+                logger->info("Saving global map to: {}", save_directory);
                 saveToPCD(points, save_directory);
             } else {
                 logger->warn("No points to save in the global map");
             }
             
-            logger->info("Final point cloud contains {%d} points", points.size());
+            logger->info("Final point cloud contains {} points", points.size());
         
         
     } catch (const std::exception& e) {
-        logger->error("Exception in GlimROS destructor: {%s}", e.what());
+        logger->error("Exception in GlimROS destructor: {}", e.what());
     }
 
 
