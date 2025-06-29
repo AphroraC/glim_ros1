@@ -34,17 +34,15 @@
 
 namespace glim {
 
-std::string GlimROS::generateTimestampFilename(const std::string& prefix, 
-                                      const std::string& extension) const{
+std::string GlimROS::generateTimestampFilename() const{
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()) % 1000;
     
     std::stringstream ss;
-    ss << prefix << "_"
-       << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S") 
-       << extension;
+    ss <<  std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S") 
+       << ".pcd";
     
     return ss.str();
 }
@@ -54,81 +52,43 @@ bool GlimROS::saveToPCD(const std::vector<Eigen::Vector4d>& points,
 
     auto logger = spdlog::default_logger();
 
-    if (points.empty()) {
-        logger->warn("No points to save, skipping PCD generation");
-        return false;
-    }
-    
     logger->info("Starting PCD file generation with {} points", points.size());
     
     try {
         pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
         
-        cloud->points.reserve(points.size());
+        cloud->points.resize(points.size());
         cloud->width = points.size();
         cloud->height = 1;  
         cloud->is_dense = true;  
         
-        #pragma omp parallel for if(points.size() > 10000)
+        #pragma omp parallel for 
         for (size_t i = 0; i < points.size(); ++i) {
             const auto& eigen_point = points[i];
-            
-            pcl::PointXYZI pcl_point;
+            auto& pcl_point = cloud->points[i];
             pcl_point.x = static_cast<float>(eigen_point.x());
             pcl_point.y = static_cast<float>(eigen_point.y());
             pcl_point.z = static_cast<float>(eigen_point.z());
             pcl_point.intensity = static_cast<float>(eigen_point.w());  
             
-            if (std::isfinite(pcl_point.x) && std::isfinite(pcl_point.y) && 
-                std::isfinite(pcl_point.z) && std::isfinite(pcl_point.intensity)) {
-                #pragma omp critical
-                {
-                    cloud->points.push_back(pcl_point);
-                }
-            }
-        }
-
-        cloud->width = cloud->points.size();
-        
-        if (cloud->points.empty()) {
-            logger->error("All points are invalid, cannot save PCD file");
-            return false;
         }
         
-        std::string filename = generateTimestampFilename("pointcloud", ".pcd");
-        std::string full_path = save_directory;
-        
-        if (!full_path.empty() && full_path.back() != '/') {
-            full_path += "/";
-        }
-        full_path += filename;
-
-        boost::filesystem::path dir_path(save_directory);
-        if (!boost::filesystem::exists(dir_path)) {
-            if (!boost::filesystem::create_directories(dir_path)) {
-                logger->error("Failed to create directory: {}", save_directory);
-                return false;
-            }
-        }
-        
-        logger->info("Saving {} valid points to: {}", cloud->points.size(), full_path);
+        std::string filename = generateTimestampFilename();
+        std::string full_path = save_directory+ "/" + filename;
         
         int result = pcl::io::savePCDFile(full_path, *cloud);
+        long file_size = static_cast<long>(boost::filesystem::file_size(full_path));
         
         if (result == 0) {
-            logger->info("Successfully saved PCD file: {}", full_path);
-            
-            boost::filesystem::path file_path(full_path);
-            if (boost::filesystem::exists(file_path)) {
-                auto file_size = boost::filesystem::file_size(file_path);
-                logger->info("PCD file size: {} MB", static_cast<double>(file_size) / (1024.0 * 1024.0));
-            }
-            
-            return true;
+          logger->info("Successfully saved PCD file: {}", full_path);
+          logger->info("PCD file size: {} MB", file_size / (1024L * 1024L));
         } else {
             logger->error("Failed to save PCD file: {}, error code: {}", full_path, result);
             return false;
         }
+            
+      return true;
+
     } catch (const std::exception& e) {
         logger->error("Exception occurred while saving PCD file: {}", e.what());
         return false;
@@ -141,26 +101,22 @@ bool GlimROS::saveToPCD(const std::vector<Eigen::Vector4d>& points,
 GlimROS::~GlimROS() {
 
     auto logger = spdlog::default_logger();
+    logger->info("GlimROS destructor: Triggering final map save");
+
+    std::string save_directory =PROJECT_SOURCE_DIR + std::string("/global_map");
+
     try {
-        logger->info("GlimROS destructor: Triggering final map save");
-        
-     
-            auto points = global_mapping->export_points();
-            if (!points.empty()) {
-                std::string save_directory ("pointclouds");
-                if (save_directory.empty()) {
-                    save_directory = "/tmp/glim_global_map";
-                }
-                
-                logger->info("Saving global map to: {}", save_directory);
-                saveToPCD(points, save_directory);
-            } else {
-                logger->warn("No points to save in the global map");
-            }
-            
-            logger->info("Final point cloud contains {} points", points.size());
-        
-        
+      if (!boost::filesystem::exists(save_directory)) {
+        boost::filesystem::create_directories(save_directory);
+      }
+      
+      auto points = global_mapping->export_points();
+      if (!points.empty()) {
+        saveToPCD(points, save_directory);
+      } else {
+        logger->warn("No points to save in the global map");
+      }        
+
     } catch (const std::exception& e) {
         logger->error("Exception in GlimROS destructor: {}", e.what());
     }

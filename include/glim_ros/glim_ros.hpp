@@ -39,8 +39,7 @@ public:
   bool saveToPCD(const std::vector<Eigen::Vector4d>& points, 
                 const std::string& save_directory = "./") const;
 
-  std::string generateTimestampFilename(const std::string& prefix = "pointcloud",
-                                        const std::string& extension = ".pcd") const;
+  std::string generateTimestampFilename() const;
 
     
 private:

@@ -13,6 +13,7 @@ option(BUILD_WITH_CUDA "Build with GPU support" OFF)
 option(BUILD_WITH_VIEWER "Build with visualizer" ON)
 set(GLIM_USE_OPENCV 1)
 add_definitions(-DGLIM_USE_OPENCV)
+add_definitions(-DPROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 find_package(catkin REQUIRED COMPONENTS cv_bridge image_transport tf2_ros roslib rosbag sensor_msgs)
 
