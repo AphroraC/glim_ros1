@@ -100,6 +100,7 @@ bool GlimROS::saveToPCD(const std::vector<Eigen::Vector4d>& points,
 
 GlimROS::~GlimROS() {
 
+  if(save_pcd){
     auto logger = spdlog::default_logger();
     logger->info("GlimROS destructor: Triggering final map save");
 
@@ -120,8 +121,7 @@ GlimROS::~GlimROS() {
     } catch (const std::exception& e) {
         logger->error("Exception in GlimROS destructor: {}", e.what());
     }
-
-
+  }
 
   kill_switch = true;
   thread.join();
@@ -163,6 +163,7 @@ GlimROS::GlimROS(ros::NodeHandle& nh) {
   glim::GlobalConfig::instance(config_path);
   glim::Config config_ros(glim::GlobalConfig::get_config_path("config_ros"));
 
+  save_pcd = config_ros.param<bool>("glim_ros", "save_pcd", false);
   keep_raw_points = config_ros.param<bool>("glim_ros", "keep_raw_points", false);
 
   // Preprocessing
