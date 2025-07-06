@@ -163,7 +163,7 @@ GlimROS::GlimROS(ros::NodeHandle& nh) {
   glim::GlobalConfig::instance(config_path);
   glim::Config config_ros(glim::GlobalConfig::get_config_path("config_ros"));
 
-  save_pcd = config_ros.param<bool>("glim_ros", "save_pcd", false);
+  save_pcd = config_ros.param<bool>("glim_ros", "save_pcd", true);
   keep_raw_points = config_ros.param<bool>("glim_ros", "keep_raw_points", false);
 
   // Preprocessing

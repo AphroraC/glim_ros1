@@ -21,6 +21,7 @@ public:
     const std::string imu_topic = config_ros.param<std::string>("glim_ros", "imu_topic", "");
     const std::string points_topic = config_ros.param<std::string>("glim_ros", "points_topic", "");
     const std::string image_topic = config_ros.param<std::string>("glim_ros", "image_topic", "");
+    save_tum = config_ros.param<bool>("glim_ros", "save_tum", true);
 
     image_sub = image_transport.subscribe(image_topic, 100, &GlimNode::image_callback, this);
     imu_sub = nh.subscribe(imu_topic, 1000, &GlimNode::imu_callback, this);
@@ -54,7 +55,10 @@ public:
     ros::spin();
 
     glim_ros->wait(true);
-    glim_ros->save("/tmp/dump");
+    
+    if(save_tum){
+      glim_ros->save("/tmp/dump");
+    }
   }
 
 private:
@@ -68,6 +72,7 @@ private:
   std::vector<std::shared_ptr<glim::GenericTopicSubscription>> ext_subs;
 
   std::unique_ptr<glim::GlimROS> glim_ros;
+  bool save_tum{true};
 };
 
 int main(int argc, char** argv) {
