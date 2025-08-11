@@ -104,7 +104,7 @@ GlimROS::~GlimROS() {
     auto logger = spdlog::default_logger();
     logger->info("GlimROS destructor: Triggering final map save");
 
-    std::string save_directory =PROJECT_SOURCE_DIR + std::string("/global_map");
+    std::string save_directory =PROJECT_SOURCE_DIR + std::string("/pointclouds");
 
     try {
       if (!boost::filesystem::exists(save_directory)) {

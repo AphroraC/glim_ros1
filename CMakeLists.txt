@@ -14,6 +14,8 @@ option(BUILD_WITH_VIEWER "Build with visualizer" ON)
 set(GLIM_USE_OPENCV 1)
 add_definitions(-DGLIM_USE_OPENCV)
 add_definitions(-DPROJECT_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+# list(APPEND CMAKE_PREFIX_PATH "/share/glim_ws/src/glim/build")
+# set(glim_DIR "/share/glim_ws/src/glim/build/")
 
 find_package(catkin REQUIRED COMPONENTS cv_bridge image_transport tf2_ros roslib rosbag sensor_msgs)
 
