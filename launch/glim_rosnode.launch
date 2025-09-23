@@ -1,4 +1,3 @@
 <launch>
-	<node pkg="glim_ros" type="glim_rosnode" name="glim_rosnode" output="screen">
-	</node>
+	<node pkg="glim_ros" type="glim_rosnode" name="glim_rosnode" output="screen"/>
 </launch>

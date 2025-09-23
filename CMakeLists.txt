@@ -33,7 +33,7 @@ catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES glim_ros
 #  CATKIN_DEPENDS glim
-#  DEPENDS glim
+ DEPENDS glim
 )
 
 ###########
