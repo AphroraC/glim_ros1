@@ -34,92 +34,86 @@
 
 namespace glim {
 
-std::string GlimROS::generateTimestampFilename() const{
-    auto now = std::chrono::system_clock::now();
-    auto time_t = std::chrono::system_clock::to_time_t(now);
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()) % 1000;
-    
-    std::stringstream ss;
-    ss <<  std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S") 
-       << ".pcd";
-    
-    return ss.str();
+std::string GlimROS::generateTimestampFilename() const {
+  auto now = std::chrono::system_clock::now();
+  auto time_t = std::chrono::system_clock::to_time_t(now);
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+  std::stringstream ss;
+  ss << std::put_time(std::localtime(&time_t), "%Y%m%d_%H%M%S") << ".pcd";
+
+  return ss.str();
 }
 
-bool GlimROS::saveToPCD(const std::vector<Eigen::Vector4d>& points, 
-                              const std::string& save_directory) const {
+bool GlimROS::saveToPCD(const std::vector<Eigen::Vector4d>& points, const std::string& save_directory) const {
+  auto logger = spdlog::default_logger();
 
-    auto logger = spdlog::default_logger();
+  logger->info("Starting PCD file generation with {} points", points.size());
 
-    logger->info("Starting PCD file generation with {} points", points.size());
-    
-    try {
-        pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
-        
-        cloud->points.resize(points.size());
-        cloud->width = points.size();
-        cloud->height = 1;  
-        cloud->is_dense = true;  
-        
-        #pragma omp parallel for 
-        for (size_t i = 0; i < points.size(); ++i) {
-            const auto& eigen_point = points[i];
-            auto& pcl_point = cloud->points[i];
-            pcl_point.x = static_cast<float>(eigen_point.x());
-            pcl_point.y = static_cast<float>(eigen_point.y());
-            pcl_point.z = static_cast<float>(eigen_point.z());
-            pcl_point.intensity = static_cast<float>(eigen_point.w());  
-            
-        }
-        
-        std::string filename = generateTimestampFilename();
-        std::string full_path = save_directory+ "/" + filename;
-        
-        int result = pcl::io::savePCDFile(full_path, *cloud);
-        long file_size = static_cast<long>(boost::filesystem::file_size(full_path));
-        
-        if (result == 0) {
-          logger->info("Successfully saved PCD file: {}", full_path);
-          logger->info("PCD file size: {} MB", file_size / (1024L * 1024L));
-        } else {
-            logger->error("Failed to save PCD file: {}, error code: {}", full_path, result);
-            return false;
-        }
-            
-      return true;
+  try {
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
 
-    } catch (const std::exception& e) {
-        logger->error("Exception occurred while saving PCD file: {}", e.what());
-        return false;
-    } catch (...) {
-        logger->error("Unknown exception occurred while saving PCD file");
-        return false;
+    cloud->points.resize(points.size());
+    cloud->width = points.size();
+    cloud->height = 1;
+    cloud->is_dense = true;
+
+#pragma omp parallel for
+    for (size_t i = 0; i < points.size(); ++i) {
+      const auto& eigen_point = points[i];
+      auto& pcl_point = cloud->points[i];
+      pcl_point.x = static_cast<float>(eigen_point.x());
+      pcl_point.y = static_cast<float>(eigen_point.y());
+      pcl_point.z = static_cast<float>(eigen_point.z());
+      pcl_point.intensity = static_cast<float>(eigen_point.w());
     }
+
+    std::string filename = generateTimestampFilename();
+    std::string full_path = save_directory + "/" + filename;
+
+    int result = pcl::io::savePCDFile(full_path, *cloud);
+    long file_size = static_cast<long>(boost::filesystem::file_size(full_path));
+
+    if (result == 0) {
+      logger->info("Successfully saved PCD file: {}", full_path);
+      logger->info("PCD file size: {} MB", file_size / (1024L * 1024L));
+    } else {
+      logger->error("Failed to save PCD file: {}, error code: {}", full_path, result);
+      return false;
+    }
+
+    return true;
+
+  } catch (const std::exception& e) {
+    logger->error("Exception occurred while saving PCD file: {}", e.what());
+    return false;
+  } catch (...) {
+    logger->error("Unknown exception occurred while saving PCD file");
+    return false;
+  }
 }
 
 GlimROS::~GlimROS() {
-
-  if(save_pcd){
+  if (save_pcd) {
     auto logger = spdlog::default_logger();
     logger->info("GlimROS destructor: Triggering final map save");
 
-    std::string save_directory =PROJECT_SOURCE_DIR + std::string("/pointclouds");
+    std::string save_directory = PROJECT_SOURCE_DIR + std::string("/pointclouds");
 
     try {
       if (!boost::filesystem::exists(save_directory)) {
         boost::filesystem::create_directories(save_directory);
       }
-      
+
       auto points = global_mapping->export_points();
       if (!points.empty()) {
         saveToPCD(points, save_directory);
       } else {
         logger->warn("No points to save in the global map");
-      }        
+      }
 
     } catch (const std::exception& e) {
-        logger->error("Exception in GlimROS destructor: {}", e.what());
+      logger->error("Exception in GlimROS destructor: {}", e.what());
     }
   }
 
@@ -163,6 +157,13 @@ GlimROS::GlimROS(ros::NodeHandle& nh) {
   glim::GlobalConfig::instance(config_path);
   glim::Config config_ros(glim::GlobalConfig::get_config_path("config_ros"));
 
+  // IMU Configuration
+  acc_threshold = config_ros.param<double>("glim_ros", "acc_threshold", 10.0);
+  cooldown_period = config_ros.param<double>("glim_ros", "cooldown_period", 0.5);
+  skip_next_frame = false;
+  last_high_acc_time = 0.0;
+  spdlog::info("IMU acceleration threshold: {}", acc_threshold);
+
   save_pcd = config_ros.param<bool>("glim_ros", "save_pcd", true);
   keep_raw_points = config_ros.param<bool>("glim_ros", "keep_raw_points", false);
 
@@ -187,7 +188,8 @@ GlimROS::GlimROS(ros::NodeHandle& nh) {
 
   // Sub mapping
   if (config_ros.param<bool>("glim_ros", "enable_local_mapping", true)) {
-    const std::string sub_mapping_so_name = glim::Config(glim::GlobalConfig::get_config_path("config_sub_mapping")).param<std::string>("sub_mapping", "so_name", "libsub_mapping.so");
+    const std::string sub_mapping_so_name =
+      glim::Config(glim::GlobalConfig::get_config_path("config_sub_mapping")).param<std::string>("sub_mapping", "so_name", "libsub_mapping.so");
     if (!sub_mapping_so_name.empty()) {
       spdlog::info("load {}", sub_mapping_so_name);
       auto sub = SubMappingBase::load_module(sub_mapping_so_name);
@@ -219,7 +221,7 @@ GlimROS::GlimROS(ros::NodeHandle& nh) {
         spdlog::warn("You must carefully check and follow the licenses of ext modules");
 
         const std::string config_ext_path = ros::package::getPath("glim_ext") + "/config";
-          spdlog::info("config_ext_path: {}", config_ext_path);
+        spdlog::info("config_ext_path: {}", config_ext_path);
         glim::GlobalConfig::instance()->override_param<std::string>("global", "config_ext", config_ext_path);
 
         break;
@@ -280,6 +282,19 @@ void GlimROS::insert_image(const double stamp, const cv::Mat& image) {
 void GlimROS::insert_imu(double stamp, const Eigen::Vector3d& linear_acc, const Eigen::Vector3d& angular_vel) {
   spdlog::trace("IMU: {:.6f}", stamp);
 
+  double acc_magnitude = linear_acc.norm();
+
+  if (acc_magnitude > acc_threshold) {
+    spdlog::warn("High IMU acceleration detected: {} m/s² (threshold: {})", acc_magnitude, acc_threshold);
+    skip_next_frame = true;
+    last_high_acc_time = stamp;
+    return;
+  } else if (stamp - last_high_acc_time < cooldown_period) {
+    skip_next_frame = true;
+    spdlog::debug("Still in cooldown period after high acceleration");
+    return;
+  }
+
   stamp += imu_time_offset;
   time_keeper->validate_imu_stamp(stamp);
 
@@ -295,6 +310,12 @@ void GlimROS::insert_imu(double stamp, const Eigen::Vector3d& linear_acc, const 
 
 void GlimROS::insert_frame(const glim::RawPoints::Ptr& raw_points) {
   spdlog::trace("points: {:.6f}", raw_points->stamp);
+
+  if (skip_next_frame) {
+    spdlog::warn("Skipping frame with high IMU acceleration");
+    skip_next_frame = false;
+    return;
+  }
 
   time_keeper->process(raw_points);
   // auto preprocessed = preprocessor->preprocess(raw_points->stamp, raw_points->times, raw_points->points);

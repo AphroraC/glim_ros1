@@ -30,7 +30,7 @@ RvizViewer::RvizViewer() : nh(), private_nh("~"), tf_buffer(), tf_listener(tf_bu
 
   imu_frame_id = config.param<std::string>("glim_ros", "imu_frame_id", "imu");
   lidar_frame_id = config.param<std::string>("glim_ros", "lidar_frame_id", "lidar");
-  base_frame_id = config.param<std::string>("glim_ros", "base_frame_id", "");
+  base_frame_id = config.param<std::string>("glim_ros", "base_frame_id", "base_link");
   if (base_frame_id.empty()) {
     base_frame_id = imu_frame_id;
   }
@@ -38,6 +38,8 @@ RvizViewer::RvizViewer() : nh(), private_nh("~"), tf_buffer(), tf_listener(tf_bu
   odom_frame_id = config.param<std::string>("glim_ros", "odom_frame_id", "odom");
   map_frame_id = config.param<std::string>("glim_ros", "map_frame_id", "map");
   publish_imu2lidar = config.param<bool>("glim_ros", "publish_imu2lidar", true);
+  publish_odometry = config.param<bool>("glim_ros", "publish_odometry", true);
+  publish_transform = config.param<bool>("glim_ros", "publish_transform", true);
   tf_time_offset = config.param<double>("glim_ros", "tf_time_offset", 1e-6);
 
   trajectory.reset(new TrajectoryManager);
@@ -84,7 +86,7 @@ void RvizViewer::odometry_new_frame(const EstimationFrame::ConstPtr& new_frame) 
         frame_id = map_frame_id;
         break;
     }
-
+    // logger->info("Publishing points. frame={}, stamp={}", frame_id, new_frame->stamp);
     auto points = frame_to_pointcloud2(frame_id, new_frame->stamp, *new_frame->frame);
     points_pub.publish(points);
   }
@@ -114,74 +116,87 @@ void RvizViewer::odometry_new_frame(const EstimationFrame::ConstPtr& new_frame) 
   const auto stamp = from_sec(new_frame->stamp);
   const auto tf_stamp = from_sec(new_frame->stamp + tf_time_offset);
 
-  // Odom -> Base
   geometry_msgs::TransformStamped trans;
   trans.header.stamp = tf_stamp;
-  trans.header.frame_id = odom_frame_id;
-  trans.child_frame_id = base_frame_id;
 
-  if (base_frame_id == imu_frame_id) {
-    trans.transform.translation.x = T_odom_imu.translation().x();
-    trans.transform.translation.y = T_odom_imu.translation().y();
-    trans.transform.translation.z = T_odom_imu.translation().z();
-    trans.transform.rotation.x = quat_odom_imu.x();
-    trans.transform.rotation.y = quat_odom_imu.y();
-    trans.transform.rotation.z = quat_odom_imu.z();
-    trans.transform.rotation.w = quat_odom_imu.w();
-    tf_broadcaster.sendTransform(trans);
-  } else {
+  if (publish_transform) {
+    if (base_frame_id == imu_frame_id) {
+      try {
+        trans.header.frame_id = odom_frame_id;
+        trans.child_frame_id = imu_frame_id;
+        trans.transform.translation.x = T_odom_imu.translation().x();
+        trans.transform.translation.y = T_odom_imu.translation().y();
+        trans.transform.translation.z = T_odom_imu.translation().z();
+        trans.transform.rotation.x = quat_odom_imu.x();
+        trans.transform.rotation.y = quat_odom_imu.y();
+        trans.transform.rotation.z = quat_odom_imu.z();
+        trans.transform.rotation.w = quat_odom_imu.w();
+        tf_broadcaster.sendTransform(trans);
+      } catch (const tf2::TransformException& e) {
+        logger->warn("Failed to publish {}->{} transform: {}", odom_frame_id, imu_frame_id, e.what());
+      }
+    } else {
+      try {
+        const auto trans_imu_base = tf_buffer.lookupTransform(imu_frame_id, base_frame_id, stamp);
+        const auto& t = trans_imu_base.transform.translation;
+        const auto& r = trans_imu_base.transform.rotation;
+
+        Eigen::Isometry3d T_imu_base = Eigen::Isometry3d::Identity();
+        T_imu_base.translation() << t.x, t.y, t.z;
+        T_imu_base.linear() = Eigen::Quaterniond(r.w, r.x, r.y, r.z).toRotationMatrix();
+
+        const Eigen::Isometry3d T_odom_base = T_odom_imu * T_imu_base;
+        const Eigen::Quaterniond quat_odom_base(T_odom_base.linear());
+
+        trans.header.frame_id = odom_frame_id;
+        trans.child_frame_id = base_frame_id;
+        trans.transform.translation.x = T_odom_base.translation().x();
+        trans.transform.translation.y = T_odom_base.translation().y();
+        trans.transform.translation.z = T_odom_base.translation().z();
+        trans.transform.rotation.x = quat_odom_base.x();
+        trans.transform.rotation.y = quat_odom_base.y();
+        trans.transform.rotation.z = quat_odom_base.z();
+        trans.transform.rotation.w = quat_odom_base.w();
+        tf_broadcaster.sendTransform(trans);
+      } catch (const tf2::TransformException& e) {
+        logger->warn("Failed to publish {}->{} transform: {}", odom_frame_id, base_frame_id, e.what());
+      }
+    }
+
     try {
-      const auto trans_imu_base = tf_buffer.lookupTransform(imu_frame_id, base_frame_id, stamp);
-      const auto& t = trans_imu_base.transform.translation;
-      const auto& r = trans_imu_base.transform.rotation;
-
-      Eigen::Isometry3d T_imu_base = Eigen::Isometry3d::Identity();
-      T_imu_base.translation() << t.x, t.y, t.z;
-      T_imu_base.linear() = Eigen::Quaterniond(r.w, r.x, r.y, r.z).toRotationMatrix();
-
-      const Eigen::Isometry3d T_odom_base = T_odom_imu * T_imu_base;
-      const Eigen::Quaterniond quat_odom_base(T_odom_base.linear());
-
-      trans.transform.translation.x = T_odom_base.translation().x();
-      trans.transform.translation.y = T_odom_base.translation().y();
-      trans.transform.translation.z = T_odom_base.translation().z();
-      trans.transform.rotation.x = quat_odom_base.x();
-      trans.transform.rotation.y = quat_odom_base.y();
-      trans.transform.rotation.z = quat_odom_base.z();
-      trans.transform.rotation.w = quat_odom_base.w();
+      trans.header.frame_id = map_frame_id;
+      trans.child_frame_id = odom_frame_id;
+      trans.transform.translation.x = T_world_odom.translation().x();
+      trans.transform.translation.y = T_world_odom.translation().y();
+      trans.transform.translation.z = T_world_odom.translation().z();
+      trans.transform.rotation.x = quat_world_odom.x();
+      trans.transform.rotation.y = quat_world_odom.y();
+      trans.transform.rotation.z = quat_world_odom.z();
+      trans.transform.rotation.w = quat_world_odom.w();
       tf_broadcaster.sendTransform(trans);
     } catch (const tf2::TransformException& e) {
-      logger->warn("Failed to lookup transform from {} to {} (stamp={}.{}): {}", imu_frame_id, base_frame_id, stamp.sec, stamp.nsec, e.what());
+      logger->warn("Failed to publish {}->{} transform: {}", map_frame_id, odom_frame_id, e.what());
     }
   }
 
-  // World -> Odom
-  trans.header.frame_id = map_frame_id;
-  trans.child_frame_id = odom_frame_id;
-  trans.transform.translation.x = T_world_odom.translation().x();
-  trans.transform.translation.y = T_world_odom.translation().y();
-  trans.transform.translation.z = T_world_odom.translation().z();
-  trans.transform.rotation.x = quat_world_odom.x();
-  trans.transform.rotation.y = quat_world_odom.y();
-  trans.transform.rotation.z = quat_world_odom.z();
-  trans.transform.rotation.w = quat_world_odom.w();
-  tf_broadcaster.sendTransform(trans);
-
-  // IMU -> LiDAR
   if (publish_imu2lidar) {
-    trans.header.frame_id = imu_frame_id;
-    trans.child_frame_id = lidar_frame_id;
-    trans.transform.translation.x = T_lidar_imu.translation().x();
-    trans.transform.translation.y = T_lidar_imu.translation().y();
-    trans.transform.translation.z = T_lidar_imu.translation().z();
-    trans.transform.rotation.x = quat_lidar_imu.x();
-    trans.transform.rotation.y = quat_lidar_imu.y();
-    trans.transform.rotation.z = quat_lidar_imu.z();
-    trans.transform.rotation.w = quat_lidar_imu.w();
-    tf_broadcaster.sendTransform(trans);
+    try {
+      trans.header.frame_id = imu_frame_id;
+      trans.child_frame_id = lidar_frame_id;
+      trans.transform.translation.x = T_lidar_imu.translation().x();
+      trans.transform.translation.y = T_lidar_imu.translation().y();
+      trans.transform.translation.z = T_lidar_imu.translation().z();
+      trans.transform.rotation.x = quat_lidar_imu.x();
+      trans.transform.rotation.y = quat_lidar_imu.y();
+      trans.transform.rotation.z = quat_lidar_imu.z();
+      trans.transform.rotation.w = quat_lidar_imu.w();
+      tf_broadcaster.sendTransform(trans);
+    } catch (const tf2::TransformException& e) {
+      logger->warn("Failed to publish {}->{} transform: {}", imu_frame_id, lidar_frame_id, e.what());
+    }
   }
 
-  if (odom_pub.getNumSubscribers()) {
+  if (publish_odometry) {
     nav_msgs::Odometry odom;
     odom.header.stamp = ros::Time(new_frame->stamp);
     odom.header.frame_id = odom_frame_id;
@@ -276,6 +291,7 @@ void RvizViewer::globalmap_on_update_submaps(const std::vector<SubMap::Ptr>& sub
 
     auto points_msg = frame_to_pointcloud2(map_frame_id, ros::Time::now().toSec(), *merged);
     map_pub.publish(points_msg);
+    // publish /glim_ros/map
   });
 }
 

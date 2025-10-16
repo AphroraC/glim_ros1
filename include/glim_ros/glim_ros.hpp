@@ -36,12 +36,10 @@ public:
 
   void save(const std::string& path);
 
-  bool saveToPCD(const std::vector<Eigen::Vector4d>& points, 
-                const std::string& save_directory = "./") const;
+  bool saveToPCD(const std::vector<Eigen::Vector4d>& points, const std::string& save_directory = "./") const;
 
   std::string generateTimestampFilename() const;
 
-    
 private:
   void loop();
 
@@ -51,8 +49,13 @@ private:
 
   bool save_pcd;
   bool keep_raw_points;
+  bool skip_next_frame;
   double imu_time_offset;
   double acc_scale;
+  double acc_threshold;
+  double last_high_acc_time;
+  double cooldown_period;
+
   std::unique_ptr<glim::TimeKeeper> time_keeper;
   std::unique_ptr<glim::CloudPreprocessor> preprocessor;
 

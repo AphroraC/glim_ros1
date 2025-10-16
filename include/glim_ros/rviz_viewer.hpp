@@ -41,7 +41,6 @@ private:
   ros::NodeHandle nh;
   ros::NodeHandle private_nh;
 
-
   tf2_ros::Buffer tf_buffer;
   tf2_ros::TransformListener tf_listener;
   tf2_ros::TransformBroadcaster tf_broadcaster;
@@ -54,6 +53,8 @@ private:
   std::string odom_frame_id;
   std::string map_frame_id;
   bool publish_imu2lidar;
+  bool publish_odometry;
+  bool publish_transform;
   double tf_time_offset;
 
   ros::Publisher points_pub;
