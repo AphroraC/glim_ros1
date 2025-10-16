@@ -29,9 +29,15 @@ public:
 private:
   void set_callbacks();
   void odometry_new_frame(const EstimationFrame::ConstPtr& new_frame);
+  void process_transform_matrix(const EstimationFrame::ConstPtr& new_frame);
+  void publish_aligned_points_msg(const EstimationFrame::ConstPtr& new_frame);
+  void publish_transform_map2odom(const EstimationFrame::ConstPtr& new_frame);
+  void publish_transform_odom2base(const EstimationFrame::ConstPtr& new_frame);
+  void publish_transform_imu2lidar(const EstimationFrame::ConstPtr& new_frame);
+  void publish_odometry_msg(const EstimationFrame::ConstPtr& new_frame);
+  // void publish_pose_msg(const EstimationFrame::ConstPtr& new_frame);
   void globalmap_on_update_submaps(const std::vector<SubMap::Ptr>& submaps);
   void invoke(const std::function<void()>& task);
-
   void spin_once();
 
 private:
@@ -52,9 +58,12 @@ private:
   std::string base_frame_id;
   std::string odom_frame_id;
   std::string map_frame_id;
-  bool publish_imu2lidar;
+  bool publish_aligned_points;
   bool publish_odometry;
   bool publish_transform;
+  bool publish_map2odom;
+  bool publish_odom2base;
+  bool publish_imu2lidar;
   double tf_time_offset;
 
   ros::Publisher points_pub;
@@ -74,6 +83,27 @@ private:
 
   // Logging
   std::shared_ptr<spdlog::logger> logger;
+
+  // Transforms
+  ros::Time stamp;
+  ros::Time tf_stamp;
+  geometry_msgs::TransformStamped trans;
+
+  Eigen::Isometry3d T_odom_imu;
+  Eigen::Quaterniond quat_odom_imu;
+
+  Eigen::Isometry3d T_lidar_imu;
+  Eigen::Quaterniond quat_lidar_imu;
+
+  Eigen::Isometry3d T_world_odom;
+  Eigen::Quaterniond quat_world_odom;
+
+  Eigen::Isometry3d T_world_imu;
+  Eigen::Quaterniond quat_world_imu;
+
+  Eigen::Isometry3d T_imu_base;
+  Eigen::Isometry3d T_odom_base;
+  Eigen::Quaterniond quat_odom_base;
 };
 
 }  // namespace glim
